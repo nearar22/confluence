@@ -115,9 +115,21 @@ transaction is live. The frontend therefore confirms a match by watching the
 on-chain match count rise, not by trusting the write to return. Read calls are
 retried with exponential backoff and polled slowly to respect the RPC limit.
 
+## FILES
+
+```
+contracts/contract.py    the entire backend; the authoritative implementation
+frontend/                the static SPA that renders the graph
+```
+
 ## SEE ALSO
 
-- Contract: [`0xA08f34982FC0b56a996525f07599E972549cF3E6`](https://explorer-bradbury.genlayer.com/address/0xA08f34982FC0b56a996525f07599E972549cF3E6)
-- Deploy transaction: [`0x5187d4046bf9e2bd3271f1866569560f7c7fb6d2ffe3f2d021c00a42376cbdd8`](https://explorer-bradbury.genlayer.com/tx/0x5187d4046bf9e2bd3271f1866569560f7c7fb6d2ffe3f2d021c00a42376cbdd8)
+The live contract, browsable on the Bradbury explorer:
 
-The full backend is `contracts/contract.py`.
+> address `0xA08f34982FC0b56a996525f07599E972549cF3E6`
+> https://explorer-bradbury.genlayer.com/address/0xA08f34982FC0b56a996525f07599E972549cF3E6
+
+The deployment that put it there:
+
+> tx `0x5187d4046bf9e2bd3271f1866569560f7c7fb6d2ffe3f2d021c00a42376cbdd8`
+> https://explorer-bradbury.genlayer.com/tx/0x5187d4046bf9e2bd3271f1866569560f7c7fb6d2ffe3f2d021c00a42376cbdd8
