@@ -1,5 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
-import { makeWalletClient, CONTRACT_ADDRESS, fetchStats, fetchAllMatches } from '../lib/contract.js';
+import {
+  makeWalletClient,
+  CONTRACT_ADDRESS,
+  CHAIN_ID,
+  CHAIN_ID_HEX,
+  BRADBURY_PARAMS,
+  fetchStats,
+  fetchAllMatches,
+} from '../lib/contract.js';
 import { pollUntilDecided } from '../lib/tx.js';
 
 const INITIAL = { phase: 'idle', liveStatus: '', error: null, match: null };
@@ -12,6 +20,10 @@ function friendlyError(e) {
   if (/already matched/i.test(s)) return 'These two signals are already connected.';
   if (/cannot match itself/i.test(s)) return 'A signal cannot be matched with itself.';
   if (/unknown signal/i.test(s)) return 'One of these signals no longer exists.';
+  if (/chain|network mismatch|wrong network|switch/i.test(s))
+    return 'Your wallet is on the wrong network. Switch MetaMask to Bradbury and retry.';
+  if (/no provider|wallet/i.test(s))
+    return 'No wallet provider found. Connect MetaMask and retry.';
   if (/rate limit|429/i.test(s)) return 'The jury is busy. Wait a moment and retry.';
   return 'The match could not be sealed. Please retry.';
 }
@@ -49,15 +61,40 @@ export function useForgeMatch(onConfirmed) {
         baseline = 0;
       }
 
+      // Make sure MetaMask is on Bradbury before signing, or the SDK's chain
+      // assertion rejects the write before the wallet can prompt.
+      try {
+        const eth = typeof window !== 'undefined' ? window.ethereum : null;
+        if (eth) {
+          const cid = await eth.request({ method: 'eth_chainId' });
+          if (parseInt(cid, 16) !== CHAIN_ID) {
+            try {
+              await eth.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: CHAIN_ID_HEX }],
+              });
+            } catch {
+              await eth.request({
+                method: 'wallet_addEthereumChain',
+                params: [BRADBURY_PARAMS],
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('chain switch error:', e);
+      }
+
       let client;
       try {
-        client = await makeWalletClient(account);
+        client = makeWalletClient(account);
       } catch (e) {
         setState((s) => ({ ...s, phase: 'error', error: friendlyError(e) }));
         busy.current = false;
         return false;
       }
       let hash = null;
+      let writeError = null;
       try {
         hash = await client.writeContract({
           address: CONTRACT_ADDRESS,
@@ -66,9 +103,12 @@ export function useForgeMatch(onConfirmed) {
           value: 0n,
         });
       } catch (e) {
+        writeError = e;
+        console.error('forge_match writeContract error:', e);
         if (
           /user rejected|denied|LackOfFundForMaxFee|insufficient/i.test(String(e)) ||
-          isDeterministicReject(e)
+          isDeterministicReject(e) ||
+          /chain|network|provider|wallet/i.test(String(e))
         ) {
           setState((s) => ({ ...s, phase: 'error', error: friendlyError(e) }));
           busy.current = false;

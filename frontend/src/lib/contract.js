@@ -13,6 +13,16 @@ export const CHAIN_ID_HEX = '0x107D';
 export const addressUrl = (addr) => `${EXPLORER}/address/${addr}`;
 export const txUrl = (hash) => `${EXPLORER}/tx/${hash}`;
 
+// Chain params for wallet_addEthereumChain, shared by the wallet hook and the
+// write hooks so a write can force the wallet onto Bradbury before signing.
+export const BRADBURY_PARAMS = {
+  chainId: CHAIN_ID_HEX,
+  chainName: 'GenLayer Bradbury Testnet',
+  nativeCurrency: { name: 'GEN', symbol: 'GEN', decimals: 18 },
+  rpcUrls: [RPC_URL],
+  blockExplorerUrls: [`${EXPLORER}/`],
+};
+
 // Fit bands map a sealed match to one of three readings. Colors track the
 // art direction: jade for strong, amber for partial, coral for misaligned.
 export const BANDS = {
@@ -26,17 +36,16 @@ export const bandOf = (band) => BANDS[String(band)] || BANDS.partial;
 export const readClient = createClient({ chain: testnetBradbury });
 
 // Write client for a browser wallet (MetaMask). The account is the connected
-// wallet ADDRESS. The previous code created the client with only { account }
-// and never bound the browser wallet, so writeContract could not reach MetaMask
-// to sign and the UI spun forever. client.connect() binds window.ethereum and
-// switches the wallet to Bradbury; it MUST run before writeContract so MetaMask
-// prompts for the signature.
-export async function makeWalletClient(account) {
-  const client = createClient({ chain: testnetBradbury, account });
-  if (typeof client.connect === 'function') {
-    await client.connect('testnetBradbury');
-  }
-  return client;
+// wallet ADDRESS and we pass the EIP-1193 provider (window.ethereum). With an
+// address account plus a provider, genlayer-js routes eth_sendTransaction
+// straight to the wallet, so MetaMask prompts the user to sign. We deliberately
+// do NOT call client.connect(): that path requires the GenLayer MetaMask Snap
+// (Flask only) and throws for ordinary MetaMask, which is what made forge fail
+// instantly without ever prompting. The wallet is already switched to Bradbury
+// by the connect flow in useWallet.
+export function makeWalletClient(account) {
+  const provider = typeof window !== 'undefined' ? window.ethereum : undefined;
+  return createClient({ chain: testnetBradbury, account, provider });
 }
 
 // Reads can hit transient RPC errors; retry with exponential backoff.

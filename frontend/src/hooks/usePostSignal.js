@@ -1,14 +1,43 @@
 import { useCallback, useRef, useState } from 'react';
-import { makeWalletClient, CONTRACT_ADDRESS, fetchStats, fetchAllSignals } from '../lib/contract.js';
+import {
+  makeWalletClient,
+  CONTRACT_ADDRESS,
+  CHAIN_ID,
+  CHAIN_ID_HEX,
+  BRADBURY_PARAMS,
+  fetchStats,
+  fetchAllSignals,
+} from '../lib/contract.js';
 import { pollUntilDecided } from '../lib/tx.js';
 
 const INITIAL = { phase: 'idle', liveStatus: '', error: null, signal: null };
+
+async function ensureBradbury() {
+  const eth = typeof window !== 'undefined' ? window.ethereum : null;
+  if (!eth) return;
+  try {
+    const cid = await eth.request({ method: 'eth_chainId' });
+    if (parseInt(cid, 16) === CHAIN_ID) return;
+    try {
+      await eth.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: CHAIN_ID_HEX }],
+      });
+    } catch {
+      await eth.request({ method: 'wallet_addEthereumChain', params: [BRADBURY_PARAMS] });
+    }
+  } catch (e) {
+    console.error('chain switch error:', e);
+  }
+}
 
 function friendlyError(e) {
   const s = String(e);
   if (/user rejected|denied/i.test(s)) return 'You declined the signature request.';
   if (/LackOfFundForMaxFee|insufficient/i.test(s))
     return 'Wallet balance is below the write fee reserve. Claim test GEN and retry.';
+  if (/chain|network mismatch|wrong network|switch/i.test(s))
+    return 'Your wallet is on the wrong network. Switch MetaMask to Bradbury and retry.';
   if (/rate limit|429/i.test(s)) return 'The network is busy. Wait a moment and retry.';
   return 'The signal could not be posted. Please retry.';
 }
@@ -38,9 +67,11 @@ export function usePostSignal(onConfirmed) {
         baseline = 0;
       }
 
+      await ensureBradbury();
+
       let client;
       try {
-        client = await makeWalletClient(account);
+        client = makeWalletClient(account);
       } catch (e) {
         setState((s) => ({ ...s, phase: 'error', error: friendlyError(e) }));
         busy.current = false;
