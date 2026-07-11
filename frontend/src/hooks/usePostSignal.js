@@ -38,7 +38,14 @@ export function usePostSignal(onConfirmed) {
         baseline = 0;
       }
 
-      const client = makeWalletClient(account);
+      let client;
+      try {
+        client = await makeWalletClient(account);
+      } catch (e) {
+        setState((s) => ({ ...s, phase: 'error', error: friendlyError(e) }));
+        busy.current = false;
+        return false;
+      }
       let hash = null;
       try {
         hash = await client.writeContract({

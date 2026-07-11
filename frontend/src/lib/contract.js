@@ -24,7 +24,20 @@ export const BANDS = {
 export const bandOf = (band) => BANDS[String(band)] || BANDS.partial;
 
 export const readClient = createClient({ chain: testnetBradbury });
-export const makeWalletClient = (account) => createClient({ chain: testnetBradbury, account });
+
+// Write client for a browser wallet (MetaMask). The account is the connected
+// wallet ADDRESS. The previous code created the client with only { account }
+// and never bound the browser wallet, so writeContract could not reach MetaMask
+// to sign and the UI spun forever. client.connect() binds window.ethereum and
+// switches the wallet to Bradbury; it MUST run before writeContract so MetaMask
+// prompts for the signature.
+export async function makeWalletClient(account) {
+  const client = createClient({ chain: testnetBradbury, account });
+  if (typeof client.connect === 'function') {
+    await client.connect('testnetBradbury');
+  }
+  return client;
+}
 
 // Reads can hit transient RPC errors; retry with exponential backoff.
 export async function withRpcRetry(fn, tries = 5) {
