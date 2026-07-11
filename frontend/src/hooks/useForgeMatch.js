@@ -10,8 +10,17 @@ function friendlyError(e) {
   if (/LackOfFundForMaxFee|insufficient/i.test(s))
     return 'Wallet balance is below the AI-write fee reserve. Claim test GEN and retry.';
   if (/already matched/i.test(s)) return 'These two signals are already connected.';
+  if (/cannot match itself/i.test(s)) return 'A signal cannot be matched with itself.';
+  if (/unknown signal/i.test(s)) return 'One of these signals no longer exists.';
   if (/rate limit|429/i.test(s)) return 'The jury is busy. Wait a moment and retry.';
   return 'The match could not be sealed. Please retry.';
+}
+
+// Deterministic contract rejections (raised as [EXPECTED] UserErrors) are hard
+// errors: the tx will never settle a match, so surfacing them immediately beats
+// spinning in the fallback poll for minutes.
+function isDeterministicReject(e) {
+  return /already matched|cannot match itself|unknown signal|EXPECTED/i.test(String(e));
 }
 
 // forge_match runs an AI consensus round (1-5 min). The installed SDK can
@@ -57,7 +66,10 @@ export function useForgeMatch(onConfirmed) {
           value: 0n,
         });
       } catch (e) {
-        if (/user rejected|denied|LackOfFundForMaxFee|insufficient/i.test(String(e))) {
+        if (
+          /user rejected|denied|LackOfFundForMaxFee|insufficient/i.test(String(e)) ||
+          isDeterministicReject(e)
+        ) {
           setState((s) => ({ ...s, phase: 'error', error: friendlyError(e) }));
           busy.current = false;
           return false;
@@ -68,10 +80,25 @@ export function useForgeMatch(onConfirmed) {
       setState((s) => ({ ...s, phase: 'consensus' }));
 
       // Path A: poll the tx hash through non-terminal AI states to a verdict.
+      // If the tx settled with an execution error (a deterministic reject such
+      // as a duplicate edge), report it now instead of spinning in Path B.
       if (hash) {
-        await pollUntilDecided(client, hash, (liveStatus) =>
+        const decided = await pollUntilDecided(client, hash, (liveStatus) =>
           setState((s) => ({ ...s, liveStatus }))
         );
+        if (decided?.errored) {
+          const already = (await fetchStats().catch(() => ({ matches: baseline }))).matches;
+          if (already <= baseline) {
+            setState((s) => ({
+              ...s,
+              phase: 'error',
+              error:
+                'The jury could not seal this match. These signals may already be connected, or one no longer exists.',
+            }));
+            busy.current = false;
+            return false;
+          }
+        }
       }
 
       // Path B: the count rising proves the edge landed regardless of SDK path.

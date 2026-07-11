@@ -33,13 +33,33 @@ const TERMINAL = new Set(['ACCEPTED', 'FINALIZED', 'UNDETERMINED', 'CANCELED']);
 
 export const isTerminal = (name) => TERMINAL.has(name);
 
+// A tx can reach ACCEPTED while its execution reverted (a deterministic
+// [EXPECTED] UserError inside the write). The node marks these as an error
+// execution result; detect that so the UI can stop and report instead of
+// polling for a state change that will never happen.
+function executionErrored(tx) {
+  if (!tx) return false;
+  const fields = [
+    tx.tx_execution_result_name,
+    tx.execution_result,
+    tx.result_name,
+    tx.statusMessage,
+  ];
+  for (const f of fields) {
+    if (f && /error|reverted|failed|not_voted/i.test(String(f))) return true;
+  }
+  return false;
+}
+
 export async function pollUntilDecided(client, hash, onUpdate, opts = {}) {
   const { tries = 200, intervalMs = 8000 } = opts;
   for (let i = 0; i < tries; i++) {
     const tx = await client.getTransaction({ hash }).catch(() => null);
     const status = statusName(tx ? tx.status : 'PENDING');
     onUpdate?.(status);
-    if (TERMINAL.has(status)) return { status, tx };
+    if (TERMINAL.has(status)) {
+      return { status, tx, errored: status !== 'FINALIZED' && executionErrored(tx) };
+    }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   return { status: 'TIMEOUT' };
