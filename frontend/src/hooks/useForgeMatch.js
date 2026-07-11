@@ -20,6 +20,8 @@ function friendlyError(e) {
   if (/already matched/i.test(s)) return 'These two signals are already connected.';
   if (/cannot match itself/i.test(s)) return 'A signal cannot be matched with itself.';
   if (/unknown signal/i.test(s)) return 'One of these signals no longer exists.';
+  if (/backpressure|not currently accepting|l1_sender_commit/i.test(s))
+    return 'The Bradbury network is congested right now and is not accepting transactions. Wait a minute and retry.';
   if (/chain|network mismatch|wrong network|switch/i.test(s))
     return 'Your wallet is on the wrong network. Switch MetaMask to Bradbury and retry.';
   if (/no provider|wallet/i.test(s))
@@ -108,7 +110,8 @@ export function useForgeMatch(onConfirmed) {
         if (
           /user rejected|denied|LackOfFundForMaxFee|insufficient/i.test(String(e)) ||
           isDeterministicReject(e) ||
-          /chain|network|provider|wallet/i.test(String(e))
+          /chain|network|provider|wallet/i.test(String(e)) ||
+          /backpressure|not currently accepting|l1_sender_commit/i.test(String(e))
         ) {
           setState((s) => ({ ...s, phase: 'error', error: friendlyError(e) }));
           busy.current = false;

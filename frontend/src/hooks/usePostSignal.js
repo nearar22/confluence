@@ -36,6 +36,8 @@ function friendlyError(e) {
   if (/user rejected|denied/i.test(s)) return 'You declined the signature request.';
   if (/LackOfFundForMaxFee|insufficient/i.test(s))
     return 'Wallet balance is below the write fee reserve. Claim test GEN and retry.';
+  if (/backpressure|not currently accepting|l1_sender_commit/i.test(s))
+    return 'The Bradbury network is congested right now and is not accepting transactions. Wait a minute and retry.';
   if (/chain|network mismatch|wrong network|switch/i.test(s))
     return 'Your wallet is on the wrong network. Switch MetaMask to Bradbury and retry.';
   if (/rate limit|429/i.test(s)) return 'The network is busy. Wait a moment and retry.';
@@ -86,7 +88,12 @@ export function usePostSignal(onConfirmed) {
           value: 0n,
         });
       } catch (e) {
-        if (/user rejected|denied|LackOfFundForMaxFee|insufficient/i.test(String(e))) {
+        console.error('post_signal writeContract error:', e);
+        if (
+          /user rejected|denied|LackOfFundForMaxFee|insufficient/i.test(String(e)) ||
+          /chain|network|provider|wallet/i.test(String(e)) ||
+          /backpressure|not currently accepting|l1_sender_commit/i.test(String(e))
+        ) {
           setState((s) => ({ ...s, phase: 'error', error: friendlyError(e) }));
           busy.current = false;
           return false;
