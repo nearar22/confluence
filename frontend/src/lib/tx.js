@@ -37,16 +37,16 @@ export const isTerminal = (name) => TERMINAL.has(name);
 // [EXPECTED] UserError inside the write). The node marks these as an error
 // execution result; detect that so the UI can stop and report instead of
 // polling for a state change that will never happen.
+// A successful GenLayer write settles with tx_execution_result_name
+// FINISHED_WITH_RETURN. A genuine revert reports ERROR / REVERTED. NOT_VOTED and
+// IDLE are normal transient values before finalization and must NOT be treated
+// as errors, or every freshly ACCEPTED tx would look failed.
 function executionErrored(tx) {
   if (!tx) return false;
-  const fields = [
-    tx.tx_execution_result_name,
-    tx.execution_result,
-    tx.result_name,
-    tx.statusMessage,
-  ];
+  const fields = [tx.tx_execution_result_name, tx.execution_result, tx.result_name];
   for (const f of fields) {
-    if (f && /error|reverted|failed|not_voted/i.test(String(f))) return true;
+    const v = String(f || '');
+    if (/error|revert|rolled_?back|finished_with_error/i.test(v)) return true;
   }
   return false;
 }
